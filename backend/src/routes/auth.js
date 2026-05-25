@@ -24,6 +24,15 @@ const loginSchema = Joi.object({
   password: Joi.string().required(),
 });
 
+const forgotPasswordSchema = Joi.object({
+  email: Joi.string().email().required(),
+});
+
+const resetPasswordSchema = Joi.object({
+  token: Joi.string().required(),
+  newPassword: Joi.string().min(8).required(),
+});
+
 // Helper to create JWT tokens
 const generateTokens = (user) => {
   const payload = { id: user._id, role: user.role };
@@ -141,5 +150,65 @@ router.post("/logout", (req, res) => {
   res.clearCookie("refreshToken");
   res.json({ message: "Logged out" });
 });
+
+// ----------- Password Reset Flow -----------
+// Request password reset – send email with token link
+router.post(
+  "/forgot-password",
+  validateBody(forgotPasswordSchema),
+  async (req, res, next) => {
+    try {
+      const { email } = req.body;
+      const user = await User.findOne({ email });
+      if (!user) return next(createError(404, "User not found"));
+
+      const resetToken = crypto.randomBytes(32).toString("hex");
+      // store hashed token & expiration on user document
+      user.passwordResetToken = crypto
+        .createHash("sha256")
+        .update(resetToken)
+        .digest("hex");
+      user.passwordResetExpires = Date.now() + 60 * 60 * 1000; // 1 hour
+      await user.save({ validateBeforeSave: false });
+
+      const resetUrl = `${config.clientUrl}/reset-password?token=${resetToken}`;
+      await sendEmail({
+        to: email,
+        subject: "CareerConnect – Password Reset",
+        html: `<p>You requested a password reset. Click <a href="${resetUrl}">here</a> to set a new password. This link expires in 1 hour.</p>`,
+      });
+
+      res.json({ message: "Password reset email sent" });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// Reset password – verify token & set new password
+router.post(
+  "/reset-password",
+  validateBody(resetPasswordSchema),
+  async (req, res, next) => {
+    try {
+      const { token, newPassword } = req.body;
+      const hashed = crypto.createHash("sha256").update(token).digest("hex");
+      const user = await User.findOne({
+        passwordResetToken: hashed,
+        passwordResetExpires: { $gt: Date.now() },
+      });
+      if (!user) return next(createError(400, "Invalid or expired reset token"));
+
+      user.password = newPassword; // pre‑save hook will hash it
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+      await user.save();
+
+      res.json({ message: "Password has been reset successfully" });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 export default router;

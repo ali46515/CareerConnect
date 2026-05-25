@@ -5,7 +5,7 @@ import cors from "cors";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "./middleware/rateLimiter.js";
 import { Server } from "socket.io";
 
 import { config } from "./config/index.js";
@@ -37,12 +37,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(morgan("dev"));
 
-// Rate limiter – 100 requests per 15 min per IP
-const limiter = rateLimit({
+// Rate limiter – use custom helper for easy tweaks
+const limiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
+  max: 200, // increased to 200 per 15 min for production
 });
 app.use(limiter);
 

@@ -3,26 +3,15 @@ import express from "express";
 import { protect, authorizeRoles } from "../middleware/auth.js";
 import User from "../models/User.js";
 import Job from "../models/Job.js";
-import Notification from "../models/Notification.js";
+import { getAnalytics } from "../controllers/adminAnalytics.js";
 
 const router = express.Router();
 
 // All admin routes require admin role
 router.use(protect, authorizeRoles("admin"));
 
-// Dashboard stats (users, jobs, applications)
-router.get("/stats", async (req, res, next) => {
-  try {
-    const [userCount, jobCount] = await Promise.all([
-      User.countDocuments(),
-      Job.countDocuments(),
-    ]);
-    const applicationCount = await (await import("../models/Application.js")).default.countDocuments();
-    res.json({ userCount, jobCount, applicationCount });
-  } catch (err) {
-    next(err);
-  }
-});
+// Dashboard – use dedicated controller for analytics
+router.get("/stats", getAnalytics);
 
 // Manage users – list, update role, ban (soft delete)
 router.get("/users", async (req, res, next) => {
